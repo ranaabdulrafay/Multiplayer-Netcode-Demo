@@ -37,7 +37,10 @@ public class LobbyManager : MonoBehaviour
     public GameObject PlayerBtn;
     public List<GameObject> PlayerBtnsInRoom = new List<GameObject>();
 
-    public GameObject LobbyPanel,CreateLobbyPanel,ProfilePanel,RoomPanel;
+    public TMP_InputField LobbyCodeInpt;
+    public TMP_InputField LobbyCodeView;
+
+    public GameObject LobbyPanel, CreateLobbyPanel, ProfilePanel, RoomPanel, AskTheCodePanel;
     #endregion
 
     public LobbyContainer lobbyInfo;
@@ -65,11 +68,11 @@ public class LobbyManager : MonoBehaviour
     // Update is called once per frame
     private void Update()
     {
-        //HandleHeartBeat();
+        HandleHeartBeat();
     }
     public async void HandleHeartBeat()
     {
-        if (lobbyInfo.TheLobbyObect != null)
+        if (lobbyInfo.TheLobbyObect != null && player.Id == lobbyInfo.TheLobbyObect.HostId)
         {
             heartBeatTimer -= Time.deltaTime;
             if (heartBeatTimer <= 0)
@@ -103,6 +106,8 @@ public class LobbyManager : MonoBehaviour
             };
             //if (lobbyInfo.TheLobbyObect != null)
             lobbyInfo.TheLobbyObect = await Lobbies.Instance.CreateLobbyAsync(lobbyInfo.name, lobbyInfo.maxplayer, lobbyOptions);
+            Debug.Log("lobby code: " + lobbyInfo.TheLobbyObect.LobbyCode);
+            LobbyCodeView.text = lobbyInfo.TheLobbyObect.LobbyCode;
             GetAllLobbies();
 
             LobbyPanel?.SetActive(false);
@@ -133,12 +138,13 @@ public class LobbyManager : MonoBehaviour
                 _LobbyBtn.LobbyInfo.IsPrivate = lobby.IsPrivate;
                 _LobbyBtn.LobbyInfo.TheLobbyObect = lobby;
                 _LobbyBtn.JoinLobbyBtn = Btn.gameObject.GetComponent<Button>();
-                string code = lobby.LobbyCode;
-                _LobbyBtn.JoinLobbyBtn.onClick.AddListener(() => JoinLobby(code));
+                //string code = lobby.LobbyCode;
+                //Debug.Log("going with code: " + code + " should be: " + lobby.LobbyCode);
+                _LobbyBtn.JoinLobbyBtn.onClick.AddListener(() => AskTheCode());
 
                 Btn.transform.parent = LobbyParent;
-                if(Btn.transform.GetChild(0).GetComponent<TMPro.TMP_Text>())
-                Btn.transform.GetChild(0).GetComponent<TMPro.TMP_Text>().text = lobby.Name;
+                if (Btn.transform.GetChild(0).GetComponent<TMPro.TMP_Text>())
+                    Btn.transform.GetChild(0).GetComponent<TMPro.TMP_Text>().text = lobby.Name;
                 LobbyBtns.Add(Btn);
             }
         }
@@ -146,6 +152,14 @@ public class LobbyManager : MonoBehaviour
         {
             Debug.LogError(e);
         }
+    }
+    public void AskTheCode()
+    {
+        AskTheCodePanel?.SetActive(true);
+    }
+    public void JoinLobby()
+    {
+        JoinLobby(LobbyCodeInpt.text);
     }
     public async void JoinLobby(string LobbyCode)
     {
@@ -155,7 +169,8 @@ public class LobbyManager : MonoBehaviour
             {
                 Player = GetPlayer()
             };
-            await Lobbies.Instance.JoinLobbyByCodeAsync(LobbyCode, options);
+            Debug.Log("joining with code: " + LobbyCode);
+            lobbyInfo.TheLobbyObect = await Lobbies.Instance.JoinLobbyByCodeAsync(LobbyCode, options);
 
             LobbyPanel?.SetActive(false);
             RoomPanel?.SetActive(true);
@@ -175,7 +190,7 @@ public class LobbyManager : MonoBehaviour
     }
     public void GetAllPlayerInTheLobby()
     {
-        foreach(GameObject g in PlayerBtnsInRoom)
+        foreach (GameObject g in PlayerBtnsInRoom)
         {
             Destroy(g);
         }
@@ -185,9 +200,9 @@ public class LobbyManager : MonoBehaviour
         {
             GameObject btn = Instantiate(PlayerBtn, PlayerBtnParent);
             PlayerDataObject pObject;
-            if(p.Data.TryGetValue("PlayerName",out pObject))
-            btn.GetComponentInChildren<TMPro.TMP_Text>().text = pObject.Value;
-            btn.GetComponent<Button>().onClick.AddListener(()=> { RemovePlayerFromLobby(); });
+            if (p.Data.TryGetValue("PlayerName", out pObject))
+                btn.GetComponentInChildren<TMPro.TMP_Text>().text = pObject.Value;
+            btn.GetComponent<Button>().onClick.AddListener(() => { RemovePlayerFromLobby(); });
             PlayerBtnsInRoom.Add(btn);
         }
     }
