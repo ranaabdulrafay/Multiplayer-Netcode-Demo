@@ -5,11 +5,18 @@ using Unity.Netcode;
 
 public class NetworkUI : MonoBehaviour
 {
-    public 
     // Start is called before the first frame update
-    void Start()
+    public void _Start()
     {
-        
+        switch(PlayerPrefs.GetInt("StartType",-1))
+        {
+            case 0:
+                StartHost();
+                break;
+            case 1:
+                StartClient();
+                break;
+        }
     }
 
     // Update is called once per frame

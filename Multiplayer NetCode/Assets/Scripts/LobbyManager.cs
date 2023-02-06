@@ -5,8 +5,10 @@ using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
+using Unity.Services.Relay;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.Netcode.Transports.UTP;
 
 [System.Serializable]
 public struct PlayerData
@@ -46,10 +48,11 @@ public class LobbyManager : MonoBehaviour
     public LobbyContainer lobbyInfo;
     public PlayerData PlayerInfo;
     private Player player;
-
+    UnityTransport _transport;
     // Start is called before the first frame update
     public async void Start()
     {
+        _transport = GameObject.FindObjectOfType<UnityTransport>();
         AddListnersForInfoInput();
 
         await UnityServices.InitializeAsync();
@@ -72,14 +75,15 @@ public class LobbyManager : MonoBehaviour
     }
     public async void HandleHeartBeat()
     {
-        if (lobbyInfo.TheLobbyObect != null && player.Id == lobbyInfo.TheLobbyObect.HostId)
+        if (lobbyInfo.TheLobbyObect != null && player.Id == lobbyInfo.TheLobbyObect.HostId )
         {
             heartBeatTimer -= Time.deltaTime;
             if (heartBeatTimer <= 0)
             {
                 heartBeatTimer = MaxHeartBeat;
+                await LobbyService.Instance.SendHeartbeatPingAsync(lobbyInfo.TheLobbyObect.Id);
+
             }
-            await LobbyService.Instance.SendHeartbeatPingAsync(lobbyInfo.TheLobbyObect.Id);
         }
     }
     public void PlayerSignInSuccess()
@@ -99,16 +103,29 @@ public class LobbyManager : MonoBehaviour
     {
         try
         {
+            var alloc = await RelayService.Instance.CreateAllocationAsync(2);
+            string joinCode = await RelayService.Instance.GetJoinCodeAsync(alloc.AllocationId);
             CreateLobbyOptions lobbyOptions = new CreateLobbyOptions
             {
                 IsPrivate = lobbyInfo.IsPrivate,
-                Player = GetPlayer()
+                Player = GetPlayer(),
+                Data = new Dictionary<string, DataObject>
+                {
+                    {
+                        "JoinCodeKey" , new DataObject(DataObject.VisibilityOptions.Public,joinCode)
+                    }
+                }
+
             };
             //if (lobbyInfo.TheLobbyObect != null)
             lobbyInfo.TheLobbyObect = await Lobbies.Instance.CreateLobbyAsync(lobbyInfo.name, lobbyInfo.maxplayer, lobbyOptions);
             Debug.Log("lobby code: " + lobbyInfo.TheLobbyObect.LobbyCode);
             LobbyCodeView.text = lobbyInfo.TheLobbyObect.LobbyCode;
-            GetAllLobbies();
+            PlayerPrefs.SetInt("StartType", 0);
+            _transport.SetHostRelayData(alloc.RelayServer.IpV4,(ushort)alloc.RelayServer.Port,
+                alloc.AllocationIdBytes,alloc.Key, alloc.ConnectionData);
+
+            //GetAllLobbies();
 
             LobbyPanel?.SetActive(false);
             RoomPanel?.SetActive(true);
@@ -140,7 +157,8 @@ public class LobbyManager : MonoBehaviour
                 _LobbyBtn.JoinLobbyBtn = Btn.gameObject.GetComponent<Button>();
                 //string code = lobby.LobbyCode;
                 //Debug.Log("going with code: " + code + " should be: " + lobby.LobbyCode);
-                _LobbyBtn.JoinLobbyBtn.onClick.AddListener(() => AskTheCode());
+                //_LobbyBtn.JoinLobbyBtn.onClick.AddListener(() => AskTheCode());
+                _LobbyBtn.JoinLobbyBtn.onClick.AddListener(() => JoinLobby(lobby));
 
                 Btn.transform.parent = LobbyParent;
                 if (Btn.transform.GetChild(0).GetComponent<TMPro.TMP_Text>())
@@ -161,8 +179,35 @@ public class LobbyManager : MonoBehaviour
     {
         JoinLobby(LobbyCodeInpt.text);
     }
+    public async void JoinLobby(Lobby _lobby)
+    {
+        try
+        {
+            JoinLobbyByIdOptions options = new JoinLobbyByIdOptions
+            {
+                Player = GetPlayer()
+            };
+
+            Debug.Log("joining id: " + _lobby.Id);
+            lobbyInfo.TheLobbyObect = await Lobbies.Instance.JoinLobbyByIdAsync(_lobby.Id, options);
+            PlayerPrefs.SetInt("StartType", 1);
+            LobbyPanel?.SetActive(false);
+            RoomPanel?.SetActive(true);
+            var alloc = await RelayService.Instance.JoinAllocationAsync(
+                lobbyInfo.TheLobbyObect.Data["JoinCodeKey"].Value);
+
+            _transport.SetClientRelayData(alloc.RelayServer.IpV4, (ushort)alloc.RelayServer.Port,
+                alloc.AllocationIdBytes, alloc.Key, alloc.ConnectionData, alloc.HostConnectionData);
+            GetAllPlayerInTheLobby();
+        }
+        catch (LobbyServiceException err)
+        {
+            Debug.LogError(err);
+        }
+    }
     public async void JoinLobby(string LobbyCode)
     {
+
         try
         {
             JoinLobbyByCodeOptions options = new JoinLobbyByCodeOptions
@@ -171,7 +216,7 @@ public class LobbyManager : MonoBehaviour
             };
             Debug.Log("joining with code: " + LobbyCode);
             lobbyInfo.TheLobbyObect = await Lobbies.Instance.JoinLobbyByCodeAsync(LobbyCode, options);
-
+            PlayerPrefs.SetInt("StartType", 1);
             LobbyPanel?.SetActive(false);
             RoomPanel?.SetActive(true);
 
@@ -253,6 +298,11 @@ public class LobbyManager : MonoBehaviour
         };
     }
     #endregion
+    public void NextScene()
+    {
+        UnityEngine.SceneManagement.SceneManager.LoadScene(
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex+1);
+    }
 }
 
 public class LobbyBtn : MonoBehaviour
